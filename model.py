@@ -1,5 +1,7 @@
 import tensorflow as tf
 import tensorflow_addons as tfa
+from dataset import get_kitti_stereo_dataset
+import numpy as np
 print(tf.__version__)
 
 # shared modules using keras functional API: https://github.com/google-research/google-research/blob/master/video_structure/vision.py
@@ -26,7 +28,7 @@ def build_downsample_block(output_channels=16, name=None):
     return tf.keras.Sequential([conv_a, conv_aa, conv_b], name)
 
 
-def build_pyramid_feature_extractor(image_shape, num_levels=6):
+def build_pyramid_feature_extractor(image_shape, num_levels):
     img = tf.keras.Input(shape=image_shape, name='image_input')
     output_channels = 16
     ft_lvls = [None]*num_levels
@@ -45,8 +47,33 @@ def build_image_input(image_shape, name='left'):
     return tf.keras.Input(shape=image_shape, dtype=tf.dtypes.uint8, name='{}_image_input'.format(name))
 
 
-def build_preprocess_image():
-    return tf.keras.layers.experimental.preprocessing.Rescaling(1./255, name='image_rescale_unit')
+def nearest_multiple(dividend, divisor):
+    q, r = divmod(dividend, divisor)
+    return (q + (r > 0))*divisor
+
+
+def pad(img_shape, num_pyr_levels):
+    im_y, im_x, channels = img_shape
+    im_y_padded, im_x_padded = (nearest_multiple(
+        im_y, 2**num_pyr_levels), nearest_multiple(im_x, 2**num_pyr_levels))
+    paddings = ((0, im_y_padded-im_y), (0, im_x_padded-im_x))
+    padded_img_shape = (im_y_padded, im_x_padded, channels)
+    print('original shape: {}, padded shape: {}'.format(
+        img_shape, padded_img_shape))
+    return tf.keras.layers.ZeroPadding2D(paddings), padded_img_shape
+
+
+def crop(in_shape, padded_shape):
+    crops = np.array(padded_shape) - np.array(in_shape)
+    return tf.keras.layers.Cropping2D(((0, crops[0]), (0, crops[1])))
+
+
+def build_preprocess_image(img_shape, num_pyr_levels):
+    rescale = tf.keras.layers.experimental.preprocessing.Rescaling(
+        1./255, name='image_rescale_unit')
+    # pad to ensure dims are multiple of 2**pyr_levels
+    padding_layer, new_img_shape = pad(img_shape, num_pyr_levels)
+    return tf.keras.models.Sequential([rescale, padding_layer], name='preprocess'), new_img_shape
 
 
 def correlation_volume(im_features_l, im_features_r_warped, max_disp_x=50):
@@ -85,8 +112,8 @@ def correlation_volume(im_features_l, im_features_r_warped, max_disp_x=50):
 
 
 def corr_to_flow(corr_vol, num_conv_reps=5):
-    # reduce channels from dispartiy to 2 by aplying convolutions repeatedly
-    res_channels = [128, 96, 64, 32, 2]
+    # reduce channels from dispartiy to 1 by aplying convolutions repeatedly
+    res_channels = [128, 96, 64, 32, 1]
     assert(len(res_channels) == num_conv_reps)
     conv_corr_vol = corr_vol
     for i in range(num_conv_reps):
@@ -112,6 +139,7 @@ def extract_multiscale_flows(img_features, num_scale_levels):
         else:
             flow_up = deconv(name='flow_upsample_{}'.format(
                 level+1))(flows[level+1])
+
         # todo: flow is scaled originally?
         img_r_warped = warp_layer(inputs=[img_features[RIGHT][level], flow_up])
         img_l_features = img_features[LEFT][level]
@@ -140,17 +168,15 @@ def pyramid_l1_loss(flows_pred, flow_gt):
     return loss
 
 
-def build_model():
-    views = [{'id': 0, 'name': 'left'}, {'id': 1, 'name': 'right'}]
+def build_model(img_shape):
+    views = [{'id': 0, 'name': 'left_view'}, {'id': 1, 'name': 'right_view'}]
     LEFT, RIGHT = (0, 1)
     num_feature_scale_levels = 6
-    im_width, im_height = (1024, 1024)
-    color_channels = 3
-    img_shape = (im_height, im_width, color_channels)
 
-    preprocess_image = build_preprocess_image()
-    extract_features_multiscale = build_pyramid_feature_extractor(
+    preprocess_image, processed_img_shape = build_preprocess_image(
         img_shape, num_feature_scale_levels)
+    extract_features_multiscale = build_pyramid_feature_extractor(
+        processed_img_shape, num_feature_scale_levels)
 
     imgs = []
     ims_ft_pyramid = []
@@ -164,11 +190,14 @@ def build_model():
 
     flow_pyramid = extract_multiscale_flows(
         ims_ft_pyramid, num_feature_scale_levels)
-    # build loss from these flows
-    model = tf.keras.Model(inputs=imgs, outputs=flow_pyramid[-1])
-    # tf.keras.utils.plot_model(model, "pwc_net_diagram.png", show_shapes=True)
-    print(model.summary())
 
+    # original resolution
+    output_flow = deconv(1, name='bilinear_upsample')(flow_pyramid[0])
+
+    output_flow = crop(img_shape, processed_img_shape)(output_flow)
+    # build loss from these flows
+    model = tf.keras.Model(inputs={
+                           'left_view': imgs[0], 'right_view': imgs[1]}, outputs=output_flow, name='PWC_net')
     # todo: replace with pyramid loss
     model.compile(optimizer=tf.keras.optimizers.RMSprop(
         0.001), loss='mae')
@@ -178,7 +207,11 @@ def build_model():
 
 def train():
     # tf.config.run_functions_eagerly(True)
-    model = build_model()
+    train_dataset, img_shape = get_kitti_stereo_dataset()
+    model = build_model(img_shape)
+    # tf.keras.utils.plot_model(model, "pwc_net_diagram.png", show_shapes=True)
+    print(model.summary())
+    model.fit(train_dataset)
 
 
 if __name__ == "__main__":
