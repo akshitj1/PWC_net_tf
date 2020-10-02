@@ -2,6 +2,8 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 from dataset import get_kitti_stereo_dataset
 import numpy as np
+from datetime import datetime as dt
+
 print(tf.__version__)
 
 # shared modules using keras functional API: https://github.com/google-research/google-research/blob/master/video_structure/vision.py
@@ -125,6 +127,7 @@ def corr_to_flow(corr_vol, num_conv_reps=5):
 
 
 def warp(im_features, flow):
+    # todo: our flow is 1 dimensional but fn. takes 2d
     return tfa.image.dense_image_warp(im_features, flow)
 
 
@@ -168,6 +171,15 @@ def pyramid_l1_loss(flows_pred, flow_gt):
     return loss
 
 
+def masked_loss(disparity_true, disparity_pred):
+    # gt disparity is sparse, compute loss only on pixels where we have disparity info
+    abs_error = tf.keras.backend.abs(
+        tf.subtract(disparity_pred, tf.cast(disparity_true, tf.float32)))
+    mask = disparity_true > 0
+    mae = tf.reduce_mean(tf.boolean_mask(abs_error, mask))
+    return mae
+
+
 def build_model(img_shape):
     views = [{'id': 0, 'name': 'left_view'}, {'id': 1, 'name': 'right_view'}]
     LEFT, RIGHT = (0, 1)
@@ -200,7 +212,7 @@ def build_model(img_shape):
                            'left_view': imgs[0], 'right_view': imgs[1]}, outputs=output_flow, name='PWC_net')
     # todo: replace with pyramid loss
     model.compile(optimizer=tf.keras.optimizers.RMSprop(
-        0.001), loss='mae')
+        0.001), loss=masked_loss)
 
     return model
 
@@ -211,7 +223,10 @@ def train():
     model = build_model(img_shape)
     # tf.keras.utils.plot_model(model, "pwc_net_diagram.png", show_shapes=True)
     print(model.summary())
-    model.fit(train_dataset)
+    log_dir = "logs/fit/" + dt.now().strftime("%m%d-%H%M")
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(
+        log_dir=log_dir, histogram_freq=1, update_freq='batch')
+    model.fit(train_dataset, callbacks=[tensorboard_callback])
 
 
 if __name__ == "__main__":
