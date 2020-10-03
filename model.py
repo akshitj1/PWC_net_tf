@@ -1,10 +1,6 @@
 import tensorflow as tf
 import tensorflow_addons as tfa
-from dataset import get_kitti_stereo_dataset
 import numpy as np
-from datetime import datetime as dt
-
-print(tf.__version__)
 
 # shared modules using keras functional API: https://github.com/google-research/google-research/blob/master/video_structure/vision.py
 
@@ -45,7 +41,7 @@ def build_pyramid_feature_extractor(image_shape, num_levels):
 
 
 def build_image_input(image_shape, name='left'):
-    return tf.keras.Input(shape=image_shape, dtype=tf.dtypes.uint8, name='{}_image_input'.format(name))
+    return tf.keras.Input(shape=image_shape, dtype=tf.dtypes.int32, name='{}_image_input'.format(name))
 
 
 def nearest_multiple(dividend, divisor):
@@ -221,19 +217,3 @@ def build_model(img_shape):
         0.001), loss=masked_loss)
 
     return model
-
-
-def train():
-    # tf.config.run_functions_eagerly(True)
-    train_dataset, img_shape = get_kitti_stereo_dataset()
-    model = build_model(img_shape)
-    # tf.keras.utils.plot_model(model, "pwc_net_diagram.png", show_shapes=True)
-    print(model.summary())
-    log_dir = "logs/fit/" + dt.now().strftime("%m%d-%H%M")
-    tensorboard_callback = tf.keras.callbacks.TensorBoard(
-        log_dir=log_dir, histogram_freq=1, update_freq='batch')
-    model.fit(train_dataset, callbacks=[tensorboard_callback])
-
-
-if __name__ == "__main__":
-    train()

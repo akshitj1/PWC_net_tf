@@ -12,7 +12,7 @@ def list_files(dir):
 
 
 def _read_image(im_path):
-    return np.asarray(Image.open(im_path))
+    return np.asarray(Image.open(im_path), dtype=np.int32)
 
 
 def _read_data_paths_entry(path_rows):
@@ -42,7 +42,7 @@ def _read_data_types_and_shapes(path_rows):
     return dtypes, shapes
 
 
-def get_kitti_stereo_dataset(data_dir='/Users/akshitjain/ext/workspace/datasets/kitti_2012/stereo_flow'):
+def get_kitti_stereo_dataset(data_dir):
     # l: image_2, r: image_3, d: disp_occ_0
     train_dir = '{}/training'.format(data_dir)
     img_left_dir = '{}/image_2'.format(train_dir)
