@@ -10,15 +10,15 @@ print(tf.__version__)
 
 
 def conv(output_channels=16, kernel_size=3, downsample=False, name=None):
-    # todo: add relu
     stride = 2 if downsample else 1
-    return tf.keras.layers.Conv2D(filters=output_channels,
-                                  kernel_size=kernel_size, strides=stride, padding='same', name='{}_conv'.format(name) if name else None)
+    conv2d = tf.keras.layers.Conv2D(filters=output_channels,
+                                    kernel_size=kernel_size, strides=stride, padding='same', name='{}_conv'.format(name) if name else None)
+    relu = tf.keras.layers.LeakyReLU(alpha=0.1)
+    return tf.keras.Sequential([conv2d, relu])
 
 
 def deconv(output_channels=2, kernel_size=4, upsample=True, name=None):
     stride = 2 if upsample else 1
-    # todo: add padding. bias is true for deconv? check default in pytroch vs tf
     return tf.keras.layers.Conv2DTranspose(filters=output_channels,
                                            kernel_size=kernel_size, strides=stride, padding='same', name='{}_deconv'.format(name))
 
@@ -45,7 +45,6 @@ def build_pyramid_feature_extractor(image_shape, num_levels):
 
 
 def build_image_input(image_shape, name='left'):
-    # todo: normalize image
     return tf.keras.Input(shape=image_shape, dtype=tf.dtypes.uint8, name='{}_image_input'.format(name))
 
 
@@ -113,7 +112,7 @@ def correlation_volume(im_features_l, im_features_r_warped, max_disp_x=50):
 #         return pred_flow
 
 
-def corr_to_flow(corr_vol, num_conv_reps=5):
+def corr_to_disp(corr_vol, num_conv_reps=5):
     # reduce channels from dispartiy to 1 by aplying convolutions repeatedly
     res_channels = [128, 96, 64, 32, 1]
     assert(len(res_channels) == num_conv_reps)
@@ -121,40 +120,47 @@ def corr_to_flow(corr_vol, num_conv_reps=5):
     for i in range(num_conv_reps):
         conv_corr_vol = tf.keras.layers.Concatenate(axis=3)(
             [conv_corr_vol, conv(res_channels[i])(conv_corr_vol)])
-    # last layer is 2 channel, hence flow
-    pred_flow = conv(res_channels[-1])(conv_corr_vol)
-    return pred_flow
+    # last layer is 1 channel, hence disparity
+    pred_disp = conv(res_channels[-1])(conv_corr_vol)
+    return pred_disp
 
 
-def warp(im_features, flow):
-    # todo: our flow is 1 dimensional but fn. takes 2d
-    return tfa.image.dense_image_warp(im_features, flow)
+def warp(im_features_r, disp_r_to_l__x):
+    # disparity is positive
+    # 0->y, 1->x
+    disp_y = tf.zeros(tf.shape(disp_r_to_l__x), name='zero_disp_y')
+    flow_r_to_l = tf.concat([disp_y, disp_r_to_l__x], axis=3)
+    im_rec_l = tfa.image.dense_image_warp(im_features_r, flow_r_to_l)
+    return im_rec_l
 
 
-def extract_multiscale_flows(img_features, num_scale_levels):
+def extract_multiscale_disps(img_features, num_scale_levels):
     LEFT, RIGHT = (0, 1)
-    flows = [None]*num_scale_levels
+    disps = [None]*num_scale_levels
     warp_layer = tf.keras.layers.Lambda(lambda x: warp(x[0], x[1]))
     for level in range(num_scale_levels-1, -1, -1):
         if level+1 >= num_scale_levels:
-            flow_up = tf.zeros(
-                tf.concat([tf.shape(img_features[RIGHT][level])[:-1], tf.constant([2], dtype=tf.int32)], axis=0), name='no_flow')
+            disp_up = tf.zeros(
+                tf.concat([tf.shape(img_features[RIGHT][level])[:-1], tf.constant([1], dtype=tf.int32)], axis=0), name='no_flow')
         else:
-            flow_up = deconv(name='flow_upsample_{}'.format(
-                level+1))(flows[level+1])
+            disp_up = deconv(1, name='disp_upsample_{}'.format(
+                level+1))(disps[level+1])
 
-        # todo: flow is scaled originally?
-        img_r_warped = warp_layer(inputs=[img_features[RIGHT][level], flow_up])
+        # original paper scales gt flow by 20 but not in our case. hence, adjust accordingly
+        # flow is computed as original res disparity irrespective the level
+        upsampled_disp_scale_factor = 1./(2**(level+1+1))
+        img_r_warped = warp_layer(
+            inputs=[img_features[RIGHT][level], upsampled_disp_scale_factor*disp_up])
         img_l_features = img_features[LEFT][level]
         corr_vol = correlation_volume(img_l_features, img_r_warped)
+        corr_vol = tf.keras.layers.LeakyReLU(0.1)(corr_vol)
         # todo: upsampled features convolved to 2 channels also concatenated in original paper
         # left features are concatenated to create U-Net like architecture
         corr_vol_enriched = tf.keras.layers.Concatenate(axis=3)(
-            [corr_vol, img_l_features, flow_up])
+            [corr_vol, img_l_features, disp_up])
 
-        flow = corr_to_flow(corr_vol_enriched)
-        flows[level] = flow
-    return flows
+        disps[level] = corr_to_disp(corr_vol_enriched)
+    return disps
 
 
 def pyramid_l1_loss(flows_pred, flow_gt):
@@ -200,11 +206,11 @@ def build_model(img_shape):
         im_ft_pyramid = extract_features_multiscale(im_normed)
         ims_ft_pyramid.append(im_ft_pyramid)
 
-    flow_pyramid = extract_multiscale_flows(
+    flow_pyramid = extract_multiscale_disps(
         ims_ft_pyramid, num_feature_scale_levels)
 
     # original resolution
-    output_flow = deconv(1, name='bilinear_upsample')(flow_pyramid[0])
+    output_flow = 0.5*deconv(1, name='bilinear_upsample')(flow_pyramid[0])
 
     output_flow = crop(img_shape, processed_img_shape)(output_flow)
     # build loss from these flows
