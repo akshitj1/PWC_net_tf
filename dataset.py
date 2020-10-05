@@ -58,6 +58,7 @@ def get_kitti_stereo_dataset(data_dir):
     dataset = tf.data.Dataset.from_generator(
         lambda: _read_data_paths_entry(path_rows), output_types=dtypes, output_shapes=shapes)
     dataset = dataset.batch(1)
+    # todo: optimize io for gpu processing
 
     # left view shape of feats(x)
     img_shape = shapes[0]['left_view']  # [1:]

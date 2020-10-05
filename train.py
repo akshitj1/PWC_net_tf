@@ -1,11 +1,14 @@
 from datetime import datetime as dt
 from dataset import get_kitti_stereo_dataset
 from model import build_model
+from build_toy_model import build_toy_model
 import os
 import tensorflow as tf
 import platform
 
 print(tf.__version__)
+
+# tpu training: https://colab.research.google.com/github/tensorflow/tpu/blob/master/tools/colab/shakespeare_with_tpu_and_keras.ipynb#scrollTo=ExQ922tfzSGA
 
 
 def get_tpu_strategy():
@@ -20,15 +23,18 @@ def get_tpu_strategy():
 
 
 def train(use_tpu=True):
+    tf.keras.backend.clear_session()
+    if use_tpu:
+        tpu_run_strategy = get_tpu_strategy()
+
     kitti_data_dir = '/content/drive/My Drive/kitti_dataset/stereo_disp' if use_tpu else '/Users/akshitjain/ext/workspace/datasets/kitti_2012/stereo_flow'
     train_dataset, img_shape = get_kitti_stereo_dataset(kitti_data_dir)
 
     if use_tpu:
-        tpu_run_strategy = get_tpu_strategy()
         with tpu_run_strategy.scope():
-            model = build_model(img_shape)
+            model = build_toy_model(img_shape)
     else:
-        model = build_model(img_shape)
+        model = build_toy_model(img_shape)
 
     log_dir = "logs/fit/" + dt.now().strftime("%m%d-%H%M")
     tensorboard_callback = tf.keras.callbacks.TensorBoard(

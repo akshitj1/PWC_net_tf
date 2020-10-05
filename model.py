@@ -137,7 +137,7 @@ def extract_multiscale_disps(img_features, num_scale_levels):
     for level in range(num_scale_levels-1, -1, -1):
         if level+1 >= num_scale_levels:
             disp_up = tf.zeros(
-                tf.concat([tf.shape(img_features[RIGHT][level])[:-1], tf.constant([1], dtype=tf.int32)], axis=0), name='no_flow')
+                tf.concat([tf.shape(img_features[RIGHT][level])[:-1], tf.constant([1])], axis=0), name='no_flow')
         else:
             disp_up = deconv(1, name='disp_upsample_{}'.format(
                 level+1))(disps[level+1])
