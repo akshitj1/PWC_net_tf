@@ -4,6 +4,15 @@ from PIL import Image
 import numpy as np
 
 
+def get_dataset_shape(im_paths):
+    # most common image shape of dataset
+    # df = pd.DataFrame(im_paths, columns=['fname'])
+    # df['shape'] = df.fname.apply(lambda p: _read_image(p).shape)
+    # im_shape = df.groupby('shape').count().idxmax().fname
+    im_shape = (375, 1242, 3)
+    return im_shape
+
+
 def list_files(dir):
     dir_path = pathlib.Path(dir)
     assert(dir_path.is_dir())
@@ -11,23 +20,23 @@ def list_files(dir):
     return file_paths
 
 
-def _read_image(im_path):
-    return np.asarray(Image.open(im_path), dtype=np.int32)
+def _read_image(im_path, des_shape):
+    return np.asarray(Image.open(im_path).resize(size=(des_shape[1], des_shape[0])), dtype=np.int32)
 
 
-def _read_data_paths_entry(path_rows):
+def _read_data_paths_entry(path_rows, im_shape):
     for l_path, r_path, d_path in path_rows:
         feats = {
-            'left_view': _read_image(l_path),
-            'right_view': _read_image(r_path)
+            'left_view': _read_image(l_path, im_shape),
+            'right_view': _read_image(r_path, im_shape)
         }
-        disparity = _read_image(d_path)
+        disparity = _read_image(d_path, im_shape)
         yield (feats, disparity)
 
 
-def _read_data_types_and_shapes(path_rows):
+def _read_data_types_and_shapes(path_rows, im_shape):
     """Gets dtypes and shapes for all keys in the dataset."""
-    elements = _read_data_paths_entry(path_rows)
+    elements = _read_data_paths_entry(path_rows, im_shape)
     feats, disparity = next(elements)
     elements.close()
 
@@ -42,24 +51,28 @@ def _read_data_types_and_shapes(path_rows):
     return dtypes, shapes
 
 
-def get_kitti_stereo_dataset(data_dir):
+def get_kitti_stereo_dataset(data_dir, training=True):
     # l: image_2, r: image_3, d: disp_occ_0
     train_dir = '{}/training'.format(data_dir)
-    img_left_dir = '{}/image_2'.format(train_dir)
-    img_right_dir = '{}/image_3'.format(train_dir)
-    depth_dir = '{}/disp_occ_0'.format(train_dir)
+    test_dir = '{}/testing'.format(data_dir)
+    data_dir = train_dir if training else test_dir
+    img_left_dir = '{}/image_2'.format(data_dir)
+    img_right_dir = '{}/image_3'.format(data_dir)
+    depth_dir = '{}/disp_occ_0'.format(data_dir)
 
     path_rows = zip(list_files(img_left_dir), list_files(
         img_right_dir), list_files(depth_dir))
     # todo: shuffle rows
+    # left view shape of feats(x)
+    img_shape = get_dataset_shape(None)  # shapes[0]['left_view']
+    print('image shape: ', img_shape)
 
-    dtypes, shapes = _read_data_types_and_shapes(path_rows)
+    dtypes, shapes = _read_data_types_and_shapes(path_rows, img_shape)
 
     dataset = tf.data.Dataset.from_generator(
-        lambda: _read_data_paths_entry(path_rows), output_types=dtypes, output_shapes=shapes)
-    dataset = dataset.batch(1)
+        lambda: _read_data_paths_entry(path_rows, img_shape), output_types=dtypes, output_shapes=shapes)
 
-    # left view shape of feats(x)
-    img_shape = shapes[0]['left_view']  # [1:]
-    print('image shape: ', img_shape)
+    dataset = dataset.batch(1).prefetch(tf.data.experimental.AUTOTUNE)
+    # todo: optimize io
+
     return dataset, img_shape
