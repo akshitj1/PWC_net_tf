@@ -1,6 +1,6 @@
 import tensorflow as tf
 import pathlib
-from PIL import Image
+import cv2 as cv
 import numpy as np
 
 
@@ -16,12 +16,20 @@ def get_dataset_shape(im_paths):
 def list_files(dir):
     dir_path = pathlib.Path(dir)
     assert(dir_path.is_dir())
-    file_paths = sorted(dir_path.glob('[!.]*.png'))
+    # ds contains depth only for _10 images
+    file_paths = sorted(dir_path.glob('[!.]*_10.png'))
+    print('{} contains {} files'.format(dir, len(file_paths)))
     return file_paths
 
 
-def _read_image(im_path, des_shape):
-    return np.asarray(Image.open(im_path).resize(size=(des_shape[1], des_shape[0])), dtype=np.int32)
+def _read_image(im_path, des_shape, grayscale=False):
+    # todo: do we need to adjust disparity with resize?
+    if grayscale:
+        im = cv.imread(str(im_path), flags=cv.IMREAD_GRAYSCALE)
+    else:
+        im = cv.imread(str(im_path))
+        im = cv.cvtColor(im, cv.COLOR_BGR2RGB)
+    return cv.resize(im, (des_shape[1], des_shape[0])).astype(np.int32)
 
 
 def _read_data_paths_entry(path_rows, im_shape):
@@ -30,7 +38,7 @@ def _read_data_paths_entry(path_rows, im_shape):
             'left_view': _read_image(l_path, im_shape),
             'right_view': _read_image(r_path, im_shape)
         }
-        disparity = _read_image(d_path, im_shape)
+        disparity = _read_image(d_path, im_shape, grayscale=True)
         yield (feats, disparity)
 
 
@@ -72,7 +80,7 @@ def get_kitti_stereo_dataset(data_dir, training=True):
     dataset = tf.data.Dataset.from_generator(
         lambda: _read_data_paths_entry(path_rows, img_shape), output_types=dtypes, output_shapes=shapes)
 
-    dataset = dataset.batch(1).prefetch(tf.data.experimental.AUTOTUNE)
+    dataset = dataset.batch(2).prefetch(tf.data.experimental.AUTOTUNE)
     # todo: optimize io
 
     return dataset, img_shape
