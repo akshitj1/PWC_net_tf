@@ -182,6 +182,19 @@ def masked_loss(disparity_true, disparity_pred):
     return mae
 
 
+def disparity_accuracy(disparity_true, disparity_pred):
+    mask = disparity_true > 0
+    disparity_true = tf.cast(disparity_true, tf.float32)
+    disparity_true = disparity_true[mask]
+    disparity_pred = disparity_pred[mask]
+    disp_errors = tf.abs(disparity_pred-disparity_true)
+    disp_errors_rel = disp_errors*100./disparity_true
+    accurate_predictions = tf.reduce_sum(
+        tf.cast(disp_errors_rel < 5., tf.float32))
+    accuracy = accurate_predictions/tf.reduce_sum(tf.cast(mask, tf.float32))
+    return accuracy
+
+
 def build_model(img_shape):
     views = [{'id': 0, 'name': 'left_view'}, {'id': 1, 'name': 'right_view'}]
     LEFT, RIGHT = (0, 1)
@@ -214,6 +227,6 @@ def build_model(img_shape):
                            'left_view': imgs[0], 'right_view': imgs[1]}, outputs=output_flow, name='PWC_net')
     # todo: replace with pyramid loss
     model.compile(optimizer=tf.keras.optimizers.RMSprop(
-        0.001), loss=masked_loss)
+        0.001), loss=masked_loss, metrics=[disparity_accuracy])
 
     return model
