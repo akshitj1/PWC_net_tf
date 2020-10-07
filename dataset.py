@@ -2,6 +2,7 @@ import tensorflow as tf
 import pathlib
 import cv2 as cv
 import numpy as np
+from itertools import cycle
 
 
 def get_dataset_shape(im_paths):
@@ -33,7 +34,7 @@ def _read_image(im_path, des_shape, grayscale=False):
 
 
 def _read_data_paths_entry(path_rows, im_shape):
-    for l_path, r_path, d_path in path_rows:
+    for l_path, r_path, d_path in cycle(path_rows):
         feats = {
             'left_view': _read_image(l_path, im_shape),
             'right_view': _read_image(r_path, im_shape)

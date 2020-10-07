@@ -33,6 +33,7 @@ def train(colab_env):
         save_weights_only=True)
     model.fit(train_dataset, callbacks=[
               tensorboard_callback, model_checkpoint_callback], epochs=EPOCHS, steps_per_epoch=STEPS_PER_EPOCH)
+    model.save_weights(ckpt_path)
 
 
 if __name__ == "__main__":
