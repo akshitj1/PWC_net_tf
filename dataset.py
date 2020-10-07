@@ -80,7 +80,7 @@ def get_kitti_stereo_dataset(data_dir, training=True):
     dataset = tf.data.Dataset.from_generator(
         lambda: _read_data_paths_entry(path_rows, img_shape), output_types=dtypes, output_shapes=shapes)
 
-    dataset = dataset.batch(2).prefetch(tf.data.experimental.AUTOTUNE)
+    dataset = dataset.repeat().batch(2).prefetch(tf.data.experimental.AUTOTUNE)
     # todo: optimize io
 
     return dataset, img_shape

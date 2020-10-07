@@ -9,6 +9,11 @@ print(tf.__version__)
 
 
 def train(colab_env):
+    EPOCHS = 10
+    BATCH_SIZE = 2
+    DATASET_SIZE = 200
+    STEPS_PER_EPOCH = DATASET_SIZE/BATCH_SIZE
+
     gdrive_kitti_dir = '/content/drive/My Drive/kitti_dataset/stereo_disp'
     local_kitti_dir = '/Users/akshitjain/ext/workspace/datasets/kitti_2012/stereo_flow'
     kitti_data_dir = gdrive_kitti_dir if colab_env else local_kitti_dir
@@ -26,9 +31,8 @@ def train(colab_env):
     model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         filepath=ckpt_path,
         save_weights_only=True)
-    EPOCHS = 10
     model.fit(train_dataset, callbacks=[
-              tensorboard_callback, model_checkpoint_callback], epochs=EPOCHS)
+              tensorboard_callback, model_checkpoint_callback], epochs=EPOCHS, steps_per_epoch=STEPS_PER_EPOCH)
 
 
 if __name__ == "__main__":
