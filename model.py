@@ -257,7 +257,8 @@ def build_model(img_shape):
     model = tf.keras.Model(inputs={
                            'left_view': imgs[0], 'right_view': imgs[1]}, outputs=output_flow, name='PWC_net')
     # todo: replace with pyramid loss
-    model.compile(optimizer='Adam', loss=masked_loss,
+    opt = tf.keras.optimizers.Adam(learning_rate=1e-4, epsilon=1e-8)
+    model.compile(optimizer=opt, loss=masked_loss,
                   metrics=[disparity_accuracy])
 
     return model
