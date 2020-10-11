@@ -141,6 +141,7 @@ def warp(im_features_r, disp_r_to_l__x):
 
 def extract_multiscale_disps(img_features, num_levels, predict_level):
     LEFT, RIGHT = (0, 1)
+    # disparity from r to l in L ref. frame
     disps = [None]*num_levels
     warp_layer = tf.keras.layers.Lambda(lambda x: warp(x[0], x[1]))
     for level in range(num_levels-1, predict_level-1, -1):
@@ -162,9 +163,9 @@ def extract_multiscale_disps(img_features, num_levels, predict_level):
             # original paper scales gt flow by 20 but not in our case. hence, adjust accordingly
             # flow is computed as original res disparity irrespective the level
             upsampled_disp_scale_factor = 1./2**level
-            im_r_warped = warp_layer(
-                inputs=[im_l_fts, upsampled_disp_scale_factor*disp_up])
-            corr_vol = correlation_volume(im_r_fts, im_r_warped)
+            im_l_warped = warp_layer(
+                inputs=[im_r_fts, upsampled_disp_scale_factor*disp_up])
+            corr_vol = correlation_volume(im_l_fts, im_l_warped)
             corr_vol = tf.keras.layers.LeakyReLU(0.1)(corr_vol)
             # left features are concatenated to create U-Net like architecture
             # disparity is added from low resolution to upscale resolution, hence final disparity will be far greater than max_disp at each level
