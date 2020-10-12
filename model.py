@@ -67,7 +67,6 @@ def crop(im, out_shape):
 def build_preprocess_image(img_shape, num_levels):
     im = get_image_input(img_shape, 'preprocess_input')
     im_normed = tf.cast(im, dtype=tf.float32)/255.
-
     # pad to ensure dims are multiple of 2**pyr_levels
     out_im, out_shape = pad(im_normed, img_shape, num_levels)
     return tf.keras.Model(inputs=im, outputs=out_im, name='preprocessing_layer'), out_shape
@@ -163,9 +162,9 @@ def extract_multiscale_disps(img_features, num_levels, predict_level):
             # original paper scales gt flow by 20 but not in our case. hence, adjust accordingly
             # flow is computed as original res disparity irrespective the level
             upsampled_disp_scale_factor = 1./2**level
-            im_l_warped = warp_layer(
+            im_l_rec = warp_layer(
                 inputs=[im_r_fts, upsampled_disp_scale_factor*disp_up])
-            corr_vol = correlation_volume(im_l_fts, im_l_warped)
+            corr_vol = correlation_volume(im_l_fts, im_l_rec)
             corr_vol = tf.keras.layers.LeakyReLU(0.1)(corr_vol)
             # left features are concatenated to create U-Net like architecture
             # disparity is added from low resolution to upscale resolution, hence final disparity will be far greater than max_disp at each level
@@ -180,9 +179,10 @@ def spatial_refine_flow(flow):
     channels = [128, 128, 128, 96, 64, 32, 1]
     dil_rates = [1, 2, 4, 8, 16, 1, 1]
     assert(len(channels) == len(dil_rates))
+    refined_flow = flow
     for channel, dil_rate in zip(channels, dil_rates):
         refined_flow = tf.keras.layers.Conv2D(
-            channel, 3, padding='same', dilation_rate=dil_rate)(flow)
+            channel, 3, padding='same', dilation_rate=dil_rate)(refined_flow)
     return refined_flow
 
 
@@ -200,13 +200,15 @@ def pyramid_l1_loss(flows_pred, flow_gt):
     return loss
 
 
-def masked_loss(disparity_true, disparity_pred):
+def masked_avg_epe_loss(disparity_true, disparity_pred):
+    # input shapes are [B*H*W] no need to squeeze
     # gt disparity is sparse, compute loss only on pixels where we have disparity info
     abs_error = tf.math.abs(
         tf.math.subtract(disparity_pred, tf.cast(disparity_true, tf.float32)))
     mask = disparity_true >= 1
-    mae = tf.reduce_mean(tf.boolean_mask(abs_error, mask))
-    return mae
+    aepe = tf.math.reduce_mean(
+        tf.boolean_mask(abs_error, mask))
+    return aepe
 
 
 def disparity_accuracy(disparity_true, disparity_pred):
@@ -218,7 +220,8 @@ def disparity_accuracy(disparity_true, disparity_pred):
     disp_errors_rel = disp_errors*100./disparity_true
     accurate_predictions = tf.reduce_sum(
         tf.cast(disp_errors_rel < 5., tf.float32))
-    accuracy = accurate_predictions/tf.reduce_sum(tf.cast(mask, tf.float32))
+    accuracy = 100.*accurate_predictions / \
+        tf.reduce_sum(tf.cast(mask, tf.float32))
     return accuracy
 
 
@@ -246,20 +249,20 @@ def build_model(img_shape):
     flow_pyramid = extract_multiscale_disps(
         ims_ft_pyramid, num_pyramid_levels, predict_level)
 
-    smooth_flow = flow_pyramid[predict_level] + \
-        spatial_refine_flow(flow_pyramid[predict_level])
+    noisy_flow = flow_pyramid[predict_level]
+    smooth_flow = noisy_flow + spatial_refine_flow(noisy_flow)
 
     # original resolution bilinear upsample
     h, w, _ = processed_img_shape
     l0_flow = tf.image.resize(smooth_flow, (h, w))
 
-    output_flow = crop(l0_flow, img_shape)
+    output_flow = tf.squeeze(crop(l0_flow, img_shape), axis=[3])
     # build loss from these flows
     model = tf.keras.Model(inputs={
                            'left_view': imgs[0], 'right_view': imgs[1]}, outputs=output_flow, name='PWC_net')
     # todo: replace with pyramid loss
     opt = tf.keras.optimizers.Adam(learning_rate=1e-4, epsilon=1e-8)
-    model.compile(optimizer=opt, loss=masked_loss,
+    model.compile(optimizer=opt, loss=masked_avg_epe_loss,
                   metrics=[disparity_accuracy])
 
     return model

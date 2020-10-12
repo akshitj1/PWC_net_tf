@@ -65,9 +65,9 @@ def get_kitti_stereo_dataset(data_dir, training=True):
     train_dir = '{}/training'.format(data_dir)
     test_dir = '{}/testing'.format(data_dir)
     data_dir = train_dir if training else test_dir
-    img_left_dir = '{}/image_2'.format(data_dir)
-    img_right_dir = '{}/image_3'.format(data_dir)
-    depth_dir = '{}/disp_occ_0'.format(data_dir)
+    img_left_dir = '{}/colored_0'.format(data_dir)
+    img_right_dir = '{}/colored_1'.format(data_dir)
+    depth_dir = '{}/flow_occ'.format(data_dir)
 
     path_rows = zip(list_files(img_left_dir), list_files(
         img_right_dir), list_files(depth_dir))
