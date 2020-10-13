@@ -124,9 +124,11 @@ def get_kitti_stereo_dataset(stereo_records_file):
 
 
 if __name__ == "__main__":
-    colab_env = platform.system() == 'Linux'
-    gdrive_kitti_dir = '/content/drive/My Drive/kitti_dataset/stereo_disp'
+    colab_env = (platform.system() == 'Linux')
+    gdrive_kitti_dir = '/content/drive/My Drive/kitti_dataset/kitti_2012/stereo_flow'
     local_kitti_dir = '/Users/akshitjain/ext/workspace/datasets/kitti_2012/stereo_flow'
-    out_tfrecord_path = 'data/kitti_2012_stereo_flow.tfrecords'
+    local_tfrecord_path = 'data/kitti_2012_stereo_flow.tfrecords'
+    gdrive_tfrecord_path = '/content/drive/My Drive/kitti_dataset/kitti_2012/stereo_flow.tfrecords'
     kitti_data_dir = gdrive_kitti_dir if colab_env else local_kitti_dir
-    generate_kitti_stereo_tfrecord_dataset(local_kitti_dir, out_tfrecord_path)
+    out_tfrecord_path = gdrive_tfrecord_path if colab_env else local_tfrecord_path
+    generate_kitti_stereo_tfrecord_dataset(kitti_data_dir, out_tfrecord_path)

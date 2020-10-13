@@ -14,7 +14,10 @@ def train(colab_env):
     DATASET_SIZE = 194
     STEPS_PER_EPOCH = DATASET_SIZE/BATCH_SIZE
 
-    kitti_records_path = 'data/kitti_2012_stereo_flow.tfrecords'
+    local_kitti_records_path = 'data/kitti_2012_stereo_flow.tfrecords'
+    gdrive_kitti_records_path = '/content/drive/My Drive/kitti_dataset/kitti_2012/stereo_flow.tfrecords'
+    kitti_records_path = gdrive_kitti_records_path if colab_env else local_kitti_records_path
+
     train_dataset, img_shape = get_kitti_stereo_dataset(kitti_records_path)
     model = build_model(img_shape)
 
