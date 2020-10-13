@@ -96,7 +96,7 @@ def adapt_to_model_input(ft_entry, out_shape):
     return (feats, disparity)
 
 
-def get_kitti_stereo_dataset(stereo_records_file):
+def get_kitti_stereo_dataset(stereo_records_file, batch_size):
     raw_stereo_dataset = tf.data.TFRecordDataset(stereo_records_file)
 
     # Create a dictionary describing the features.
@@ -118,7 +118,7 @@ def get_kitti_stereo_dataset(stereo_records_file):
 
     dataset = uniformly_shaped_dataset.cache(  # since, our arrays are only uint8 so, can cache after all transformations
     ).repeat().batch(
-        2).prefetch(tf.data.experimental.AUTOTUNE)
+        batch_size).prefetch(tf.data.experimental.AUTOTUNE)
 
     return dataset, model_in_shape
 
