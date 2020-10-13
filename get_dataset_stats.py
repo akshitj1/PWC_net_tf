@@ -20,7 +20,11 @@ def get_dataset_shape(im_paths):
     # most common image shape of dataset
     df = pd.DataFrame(im_paths, columns=['fname'])
     df['shape'] = df.fname.apply(lambda p: _read_image(p).shape)
-    im_shape = df.groupby('shape').count().idxmax().fname
+    shape_counts = df.groupby('shape').count()
+    im_shape = shape_counts.idxmax().fname
+    print('image shape stats: ', shape_counts)
+    print('total files: ', len(im_paths))
+    print('most common im shape: ', im_shape)
     return im_shape
 
 

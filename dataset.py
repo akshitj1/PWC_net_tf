@@ -15,7 +15,7 @@ def list_files(dir):
     # ds contains depth only for _10 images
     file_paths = sorted(dir_path.glob('[!.]*_10.png'))
     print('{} contains {} files'.format(dir, len(file_paths)))
-    return file_paths
+    return file_paths[:10]
 
 
 def _bytes_feature(value):
@@ -107,18 +107,17 @@ def get_kitti_stereo_dataset(stereo_records_file):
         'depth_raw': tf.io.FixedLenFeature([], tf.string)
     }
 
-    parsed_stereo_dataset = raw_stereo_dataset.map(
-        lambda entry: _parse_ds_entry(entry, stereo_record_description))
+    parsed_stereo_dataset = raw_stereo_dataset.map(lambda entry: _parse_ds_entry(entry, stereo_record_description), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-    np_fts_dataset = parsed_stereo_dataset.map(byte_features_to_tensors)
+    np_fts_dataset = parsed_stereo_dataset.map(byte_features_to_tensors, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # computed by get_dataset_stats
     model_in_shape = (376, 1241, 3)
     print('image shape: ', model_in_shape)
-    uniformly_shaped_dataset = np_fts_dataset.map(
-        lambda entry: adapt_to_model_input(entry, model_in_shape))
+    uniformly_shaped_dataset = np_fts_dataset.map(lambda entry: adapt_to_model_input(entry, model_in_shape), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-    dataset = uniformly_shaped_dataset.repeat().batch(
+    dataset = uniformly_shaped_dataset.cache(  # since, our arrays are only uint8 so, can cache after all transformations
+    ).repeat().batch(
         2).prefetch(tf.data.experimental.AUTOTUNE)
 
     return dataset, model_in_shape

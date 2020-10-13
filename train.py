@@ -11,7 +11,7 @@ print(tf.__version__)
 def train(colab_env):
     EPOCHS = 10
     BATCH_SIZE = 2
-    DATASET_SIZE = 200
+    DATASET_SIZE = 194
     STEPS_PER_EPOCH = DATASET_SIZE/BATCH_SIZE
 
     kitti_records_path = 'data/kitti_2012_stereo_flow.tfrecords'

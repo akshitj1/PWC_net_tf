@@ -201,18 +201,19 @@ def pyramid_l1_loss(flows_pred, flow_gt):
 
 
 def masked_avg_epe_loss(disparity_true, disparity_pred):
-    # input shapes are [B*H*W] no need to squeeze
+    # input shapes are [B*H*W*1]
     # gt disparity is sparse, compute loss only on pixels where we have disparity info
-    abs_error = tf.math.abs(
-        tf.math.subtract(disparity_pred, tf.cast(disparity_true, tf.float32)))
     mask = disparity_true >= 1
+    disparity_true = tf.cast(disparity_true, tf.float32)
+    abs_error = tf.math.abs(
+        tf.math.subtract(disparity_pred, disparity_true))
     aepe = tf.math.reduce_mean(
         tf.boolean_mask(abs_error, mask))
     return aepe
 
 
 def disparity_accuracy(disparity_true, disparity_pred):
-    mask = disparity_true > 0
+    mask = disparity_true >= 1
     disparity_true = tf.cast(disparity_true, tf.float32)
     disparity_true = disparity_true[mask]
     disparity_pred = disparity_pred[mask]
@@ -256,7 +257,7 @@ def build_model(img_shape):
     h, w, _ = processed_img_shape
     l0_flow = tf.image.resize(smooth_flow, (h, w))
 
-    output_flow = tf.squeeze(crop(l0_flow, img_shape), axis=[3])
+    output_flow = crop(l0_flow, img_shape)
     # build loss from these flows
     model = tf.keras.Model(inputs={
                            'left_view': imgs[0], 'right_view': imgs[1]}, outputs=output_flow, name='PWC_net')
