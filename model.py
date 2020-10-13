@@ -42,7 +42,7 @@ def build_pyramid_feature_extractor(image_shape, num_levels):
 
 
 def get_image_input(image_shape, name):
-    return tf.keras.Input(shape=image_shape, dtype=tf.dtypes.int32, name=name)
+    return tf.keras.Input(shape=image_shape, dtype=tf.dtypes.uint8, name=name)
 
 
 def nearest_multiple(dividend, divisor):
