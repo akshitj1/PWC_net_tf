@@ -15,7 +15,7 @@ def list_files(dir):
     # ds contains depth only for _10 images
     file_paths = sorted(dir_path.glob('[!.]*_10.png'))
     print('{} contains {} files'.format(dir, len(file_paths)))
-    return file_paths[:10]
+    return file_paths
 
 
 def _bytes_feature(value):
@@ -52,7 +52,7 @@ def generate_kitti_stereo_tfrecord_dataset(data_dir, out_record_file, training=T
     data_dir = train_dir if training else test_dir
     img_left_dir = '{}/colored_0'.format(data_dir)
     img_right_dir = '{}/colored_1'.format(data_dir)
-    depth_dir = '{}/flow_occ'.format(data_dir)
+    depth_dir = '{}/disp_occ'.format(data_dir)
 
     path_rows = zip(list_files(img_left_dir), list_files(
         img_right_dir), list_files(depth_dir))
@@ -88,9 +88,9 @@ def adapt_to_model_input(ft_entry, out_shape):
     resized_fts = {}
     for key, im in ft_entry.items():
         # todo: do we need to adjust disparity with resize?
-        # cv.resize(v, (w, h)).astype(np.int32)
+        # nearest interpolation preserves dtype
         resized_fts[key] = tf.image.resize(
-            im, tf.constant([h, w]), name='uniform_sizing')
+            im, tf.constant([h, w]), method='nearest',name='uniform_sizing')
     feats = dict((k, resized_fts[k]) for k in ('left_view', 'right_view'))
     disparity = resized_fts['depth']
     return (feats, disparity)
