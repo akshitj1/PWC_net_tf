@@ -9,7 +9,7 @@ print(tf.__version__)
 
 
 def train(colab_env):
-    EPOCHS = 500
+    EPOCHS = 50
     BATCH_SIZE = 8
     DATASET_SIZE = 194
     STEPS_PER_EPOCH = DATASET_SIZE/BATCH_SIZE

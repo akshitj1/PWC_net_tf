@@ -5,10 +5,10 @@ import numpy as np
 # shared modules using keras functional API: https://github.com/google-research/google-research/blob/master/video_structure/vision.py
 
 
-def conv(output_channels=16, kernel_size=3, downsample=False, name=None):
+def conv(output_channels, kernel_size=3, dilation_rate=1, downsample=False, name=None):
     stride = 2 if downsample else 1
     conv2d = tf.keras.layers.Conv2D(filters=output_channels,
-                                    kernel_size=kernel_size, strides=stride, padding='same', name='{}_conv'.format(name) if name else None)
+                                    kernel_size=kernel_size, strides=stride, padding='same', dilation_rate=dilation_rate, kernel_initializer='he_normal', name='{}_conv'.format(name) if name else None)
     relu = tf.keras.layers.LeakyReLU(alpha=0.1)
     return tf.keras.Sequential([conv2d, relu])
 
@@ -16,7 +16,7 @@ def conv(output_channels=16, kernel_size=3, downsample=False, name=None):
 def deconv(output_channels=2, kernel_size=4, upsample=True, name=None):
     stride = 2 if upsample else 1
     return tf.keras.layers.Conv2DTranspose(filters=output_channels,
-                                           kernel_size=kernel_size, strides=stride, padding='same', name='{}_deconv'.format(name))
+                                           kernel_size=kernel_size, strides=stride, padding='same', kernel_initializer='he_normal', name='{}_deconv'.format(name))
 
 
 def downsample_block(output_channels=16, name=None):
@@ -176,14 +176,15 @@ def extract_multiscale_disps(img_features, num_levels, predict_level):
 
 
 def spatial_refine_flow(flow):
-    channels = [128, 128, 128, 96, 64, 32, 1]
-    dil_rates = [1, 2, 4, 8, 16, 1, 1]
+    channels = [128, 128, 128, 96, 64, 32]
+    dil_rates = [1, 2, 4, 8, 16, 1]
     assert(len(channels) == len(dil_rates))
-    refined_flow = flow
+    disparity_delta = flow
     for channel, dil_rate in zip(channels, dil_rates):
-        refined_flow = tf.keras.layers.Conv2D(
-            channel, 3, padding='same', dilation_rate=dil_rate)(refined_flow)
-    return refined_flow
+        disparity_delta = conv(channel, 3, dilation_rate=dil_rate)(disparity_delta)
+    # we are computing deltas so we want negative values too
+    disparity_delta = tf.keras.layers.Conv2D(1, 3, padding='same', kernel_initializer='he_normal', name='disparity_delta')(disparity_delta)
+    return disparity_delta
 
 
 def pyramid_l1_loss(flows_pred, flow_gt):
