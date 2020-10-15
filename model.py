@@ -8,7 +8,7 @@ import numpy as np
 def conv(output_channels, kernel_size=3, dilation_rate=1, downsample=False, name=None):
     stride = 2 if downsample else 1
     conv2d = tf.keras.layers.Conv2D(filters=output_channels,
-                                    kernel_size=kernel_size, strides=stride, padding='same', dilation_rate=dilation_rate, kernel_initializer='he_normal', name='{}_conv'.format(name) if name else None)
+                                    kernel_size=kernel_size, strides=stride, padding='same', dilation_rate=dilation_rate, name='{}_conv'.format(name) if name else None)
     relu = tf.keras.layers.LeakyReLU(alpha=0.1)
     return tf.keras.Sequential([conv2d, relu])
 
@@ -16,7 +16,7 @@ def conv(output_channels, kernel_size=3, dilation_rate=1, downsample=False, name
 def deconv(output_channels=2, kernel_size=4, upsample=True, name=None):
     stride = 2 if upsample else 1
     return tf.keras.layers.Conv2DTranspose(filters=output_channels,
-                                           kernel_size=kernel_size, strides=stride, padding='same', kernel_initializer='he_normal', name='{}_deconv'.format(name))
+                                           kernel_size=kernel_size, strides=stride, padding='same', name='{}_deconv'.format(name))
 
 
 def downsample_block(output_channels=16, name=None):
@@ -183,7 +183,7 @@ def spatial_refine_flow(flow):
     for channel, dil_rate in zip(channels, dil_rates):
         disparity_delta = conv(channel, 3, dilation_rate=dil_rate)(disparity_delta)
     # we are computing deltas so we want negative values too
-    disparity_delta = tf.keras.layers.Conv2D(1, 3, padding='same', kernel_initializer='he_normal', name='disparity_delta')(disparity_delta)
+    disparity_delta = tf.keras.layers.Conv2D(1, 3, padding='same', name='disparity_delta')(disparity_delta)
     return disparity_delta
 
 
