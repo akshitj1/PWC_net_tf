@@ -31,10 +31,14 @@ def train(colab_env):
 
     model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         filepath=ckpt_path,
-        save_weights_only=True)
+        save_weights_only=True,
+        save_best_only=True,
+        monitor='disparity_accuracy',
+        mode='max')
+    
     model.fit(train_dataset, callbacks=[
               tensorboard_callback, model_checkpoint_callback], epochs=EPOCHS, steps_per_epoch=STEPS_PER_EPOCH)
-    model.save_weights(ckpt_path)
+    # model.save_weights(ckpt_path)
 
 
 if __name__ == "__main__":

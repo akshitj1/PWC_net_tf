@@ -1,6 +1,6 @@
 ------- TODO
+he normal initializer makes training unstable? replace with default
 disparity maxes till 24?
-optimize to batch size 8
 lazy execution for speedup
 -------- DONE
 optimizers rms prop, adam
@@ -13,3 +13,4 @@ adjust learning rate, epsilon for adam to 1e-4
 assert lossfn shapes match: https://github.com/keras-team/keras/issues/5441
 replace resize with crop and pad - resize_with_crop_pad works as expected
 adapt samples, input size to kitti 2012
+optimize to batch size 8
