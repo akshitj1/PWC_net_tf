@@ -3,5 +3,5 @@ env
 __pycache__
 logs
 data
-explore
-
+**/.ipynb_checkpoints
+**.pyc
