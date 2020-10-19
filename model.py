@@ -27,9 +27,10 @@ def downsample_block(output_channels=16, name=None):
 
 
 def build_pyramid_feature_extractor(image_shape, num_levels):
+    h, w = image_shape
     # level 0 -> original resolution, level n -> l/2**n dims for l in {w,h}
     # there are 6 levels from 2 to 7. we will not store 0,1 as they are not used
-    img = tf.keras.Input(shape=image_shape, name='image_input')
+    img = tf.keras.Input(shape=(h, w, 3), name='image_input')
     ft_pyramid = [None]*num_levels
     # 0th level features is the image itself. anyway we are going to use from level 2
     ft_pyramid[0] = img
@@ -42,13 +43,21 @@ def build_pyramid_feature_extractor(image_shape, num_levels):
 
 
 def get_image_input(image_shape, name):
-    return tf.keras.Input(shape=image_shape, dtype=tf.dtypes.uint8, name=name)
+    h, w=image_shape
+    return tf.keras.Input(shape=(h, w, 3), dtype=tf.dtypes.uint8, name=name)
 
 
 def nearest_multiple(dividend, divisor):
     q, r = divmod(dividend, divisor)
     return (q + (r > 0))*divisor
 
+def pyramid_compatible_shape(in_shape, num_levels):
+    divisor = 2**(num_levels-1)
+    in_h, in_w = in_shape
+    out_h, out_w = (nearest_multiple(in_h, divisor),
+                    nearest_multiple(in_w, divisor))
+    out_shape = (out_h, out_w)
+    return out_shape
 
 def pad(im, in_img_shape, num_levels):
     divisor = 2**(num_levels-1)
@@ -67,9 +76,7 @@ def crop(im, out_shape):
 def build_preprocess_image(img_shape, num_levels):
     im = get_image_input(img_shape, 'preprocess_input')
     im_normed = tf.cast(im, dtype=tf.float32)/255.
-    # pad to ensure dims are multiple of 2**pyr_levels
-    out_im, out_shape = pad(im_normed, img_shape, num_levels)
-    return tf.keras.Model(inputs=im, outputs=out_im, name='preprocessing_layer'), out_shape
+    return tf.keras.Model(inputs=im, outputs=im_normed, name='preprocessing_layer')
 
 
 def correlation_volume(im_features_l, im_features_r_warped, max_disp_x=4):
@@ -187,20 +194,6 @@ def spatial_refine_flow(flow):
     return disparity_delta
 
 
-def pyramid_l1_loss(flows_pred, flow_gt):
-    num_feature_scale_levels = 6
-    flows_gt = []
-    lvl_loss_weights = [0.0, 0.005, 0.01, 0.02, 0.08, 0.32]
-    assert(len(lvl_loss_weights) == num_feature_scale_levels)
-    loss = 0
-    for lvl in range(num_feature_scale_levels):
-        downscaled_flow = tf.image.resize(flow_gt, tf.shape(
-            flows_pred[lvl])[-2:], method=tf.image.ResizeMethod.AREA)
-        loss += lvl_loss_weights[lvl] * tf.reduce_sum(
-            tf.abs(tf.subtract(flows_pred[lvl], downscaled_flow)))
-    return loss
-
-
 def masked_avg_epe_loss(disparity_true, disparity_pred):
     # input shapes are [B*H*W*1]
     # gt disparity is sparse, compute loss only on pixels where we have disparity info
@@ -212,31 +205,32 @@ def masked_avg_epe_loss(disparity_true, disparity_pred):
         tf.boolean_mask(abs_error, mask))
     return aepe
 
+def epe_loss(disparity_true, disparity_pred):
+    # input can be of any resolution scale of pyramid
+    abs_error = tf.math.abs(
+        tf.math.subtract(disparity_pred, disparity_true))
+    aepe = tf.math.reduce_mean(abs_error)
+    return aepe
 
 def disparity_accuracy(disparity_true, disparity_pred):
-    mask = disparity_true >= 1
-    disparity_true = tf.cast(disparity_true, tf.float32)
-    disparity_true = disparity_true[mask]
-    disparity_pred = disparity_pred[mask]
     disp_errors = tf.abs(disparity_pred-disparity_true)
-    disp_errors_rel = disp_errors*100./disparity_true
+    disp_errors_rel = disp_errors/disparity_true
     accurate_predictions = tf.reduce_sum(
-        tf.cast(disp_errors_rel < 5., tf.float32))
-    accuracy = 100.*accurate_predictions / \
-        tf.reduce_sum(tf.cast(mask, tf.float32))
+        tf.cast(disp_errors_rel < 0.05, tf.float32))
+    accuracy = 100.*accurate_predictions/ tf.cast(tf.size(disparity_true), tf.dtypes.float32)
     return accuracy
 
 
-def build_model(img_shape):
+def build_model(img_shape, num_pyramid_levels, predict_level):
     views = [{'id': 0, 'name': 'left_view'}, {'id': 1, 'name': 'right_view'}]
     LEFT, RIGHT = (0, 1)
     num_pyramid_levels = 8
     # 0-indexed, level at which prediction will happen
     predict_level = 2
-    preprocess_image, processed_img_shape = build_preprocess_image(
+    preprocess_image = build_preprocess_image(
         img_shape, num_pyramid_levels)
     extract_ft_pyramid = build_pyramid_feature_extractor(
-        processed_img_shape, num_pyramid_levels)
+        img_shape, num_pyramid_levels)
 
     imgs = []
     ims_ft_pyramid = []
@@ -250,21 +244,36 @@ def build_model(img_shape):
 
     flow_pyramid = extract_multiscale_disps(
         ims_ft_pyramid, num_pyramid_levels, predict_level)
+    
+    # bilinear flow till before predict level
+    for lvl in range(predict_level):
+        h,w  = img_shape
+        flow_pyramid[lvl] = tf.image.resize(flow_pyramid[predict_level], (h//2**lvl, w//2**lvl))
 
-    noisy_flow = flow_pyramid[predict_level]
-    smooth_flow = noisy_flow + spatial_refine_flow(noisy_flow)
+    # noisy_flow = flow_pyramid[predict_level]
+    # smooth_flow = noisy_flow + spatial_refine_flow(noisy_flow)
 
     # original resolution bilinear upsample
-    h, w, _ = processed_img_shape
-    l0_flow = tf.image.resize(smooth_flow, (h, w))
+    # h, w = img_shape
+    # l0_flow = tf.image.resize(smooth_flow, (h, w))
 
-    output_flow = crop(l0_flow, img_shape)
+    # output_flow = crop(l0_flow, img_shape)
+    # identity to rename, as this name gets used in loss fn.
+    out_flows = dict(('l{}'.format(lvl),tf.identity(flow_pyramid[lvl], 'l{}'.format(lvl))) for lvl in range(num_pyramid_levels))
+
     # build loss from these flows
     model = tf.keras.Model(inputs={
-                           'left_view': imgs[0], 'right_view': imgs[1]}, outputs=output_flow, name='PWC_net')
-    # todo: replace with pyramid loss
-    opt = tf.keras.optimizers.Adam(learning_rate=1e-4, epsilon=1e-8)
-    model.compile(optimizer=opt, loss=masked_avg_epe_loss,
-                  metrics=[disparity_accuracy])
+                           'left_view': imgs[0], 'right_view': imgs[1]}, outputs=out_flows, name='PWC_net')
+    
+    losses = dict(('l{}'.format(lvl),epe_loss) for lvl in range(num_pyramid_levels))
+    # no loss on layers before predict level
+    pyr_loss_weights = [0., 0., 0.32, 0.08, 0.02, 0.01, 0.005, 0.0025]
+    pyr_loss_weights = dict(('l{}'.format(lvl),pyr_loss_weights[lvl]) for lvl in range(num_pyramid_levels))
+
+    assert(len(pyr_loss_weights) == num_pyramid_levels)
+
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4, epsilon=1e-8)
+    model.compile(optimizer=optimizer, loss=losses, loss_weights=pyr_loss_weights,
+                  metrics={'l0': disparity_accuracy})
 
     return model

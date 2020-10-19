@@ -5,3 +5,5 @@ logs
 data
 **/.ipynb_checkpoints
 **.pyc
+toy_log
+trained_ckpt

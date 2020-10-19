@@ -1,25 +1,25 @@
 from datetime import datetime as dt
-from dataset import get_kitti_stereo_dataset
+from sintel_dataset import get_sintel_disparity_dataset, get_sintel_path
 from model import build_model
-import os
 import tensorflow as tf
 import platform
+from model import nearest_multiple, pyramid_compatible_shape
 
 print(tf.__version__)
-
 
 def train(colab_env):
     EPOCHS = 50
     BATCH_SIZE = 8
     DATASET_SIZE = 194
     STEPS_PER_EPOCH = DATASET_SIZE/BATCH_SIZE
+    NUM_PYRAMID_LEVELS = 8
+    PREDICT_LEVEL = 2
+    DATASET_SHAPE = (436, 1024) # h, w
+    MODEL_IN_SHAPE = pyramid_compatible_shape(DATASET_SHAPE, NUM_PYRAMID_LEVELS)
 
-    local_kitti_records_path = 'data/kitti_2012_stereo_flow.tfrecords'
-    gdrive_kitti_records_path = '/content/drive/My Drive/kitti_dataset/kitti_2012/stereo_flow.tfrecords'
-    kitti_records_path = gdrive_kitti_records_path if colab_env else local_kitti_records_path
-
-    train_dataset, img_shape = get_kitti_stereo_dataset(kitti_records_path, BATCH_SIZE)
-    model = build_model(img_shape)
+    sintel_tfrecord_path = get_sintel_path(colab_env)
+    train_dataset = get_sintel_disparity_dataset(sintel_tfrecord_path, BATCH_SIZE, MODEL_IN_SHAPE, NUM_PYRAMID_LEVELS)
+    model = build_model(MODEL_IN_SHAPE, NUM_PYRAMID_LEVELS, PREDICT_LEVEL)
 
     # metrics logging
     log_dir = "logs/fit/" + dt.now().strftime("%m%d-%H%M")
@@ -27,7 +27,7 @@ def train(colab_env):
         log_dir=log_dir, histogram_freq=1, update_freq='batch')
 
     # checkpointing
-    ckpt_path = '/content/drive/My Drive/kitti_dataset/pwc_net_ckpts/ckpt' if colab_env else 'pwc_net_ckpts/ckpt'
+    ckpt_path = '/content/drive/My Drive/sintel_dataset/pwc_net_ckpts/ckpt' if colab_env else 'pwc_net_ckpts/ckpt'
 
     model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         filepath=ckpt_path,
