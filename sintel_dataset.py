@@ -138,7 +138,7 @@ def get_sintel_disparity_dataset(stereo_records_file, batch_size, model_in_shape
     np_fts_dataset = parsed_stereo_dataset.map(byte_features_to_tensors, num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()    
     uniformly_shaped_dataset = np_fts_dataset.map(lambda entry: adapt_to_model_input(entry, model_in_shape, model_pyr_levels), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-    dataset = uniformly_shaped_dataset.repeat().batch(
+    dataset = uniformly_shaped_dataset.shuffle(1064).repeat().batch(
         batch_size).prefetch(tf.data.experimental.AUTOTUNE)
 
     return dataset

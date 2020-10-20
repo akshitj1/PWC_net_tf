@@ -1,4 +1,7 @@
 import tensorflow as tf
+from tensorflow import keras as K
+from tensorflow.python.eager import backprop
+from tensorflow.python.keras.engine import data_adapter
 import tensorflow_addons as tfa
 import numpy as np
 
@@ -8,7 +11,13 @@ import numpy as np
 def conv(output_channels, kernel_size=3, dilation_rate=1, downsample=False, name=None):
     stride = 2 if downsample else 1
     conv2d = tf.keras.layers.Conv2D(filters=output_channels,
-                                    kernel_size=kernel_size, strides=stride, padding='same', dilation_rate=dilation_rate, name='{}_conv'.format(name) if name else None)
+                                    kernel_size=kernel_size,
+                                    strides=stride,
+                                    padding='same',
+                                    dilation_rate=dilation_rate,
+                                    kernel_regularizer=K.regularizers.l2(4e-4),
+                                    bias_regularizer=K.regularizers.l2(4e-4),
+                                    name='{}_conv'.format(name) if name else None)
     relu = tf.keras.layers.LeakyReLU(alpha=0.1)
     return tf.keras.Sequential([conv2d, relu])
 
@@ -16,7 +25,12 @@ def conv(output_channels, kernel_size=3, dilation_rate=1, downsample=False, name
 def deconv(output_channels=2, kernel_size=4, upsample=True, name=None):
     stride = 2 if upsample else 1
     return tf.keras.layers.Conv2DTranspose(filters=output_channels,
-                                           kernel_size=kernel_size, strides=stride, padding='same', name='{}_deconv'.format(name))
+                                           kernel_size=kernel_size,
+                                           strides=stride,
+                                           padding='same',
+                                           kernel_regularizer=K.regularizers.l2(4e-4),
+                                           bias_regularizer=K.regularizers.l2(4e-4),
+                                           name='{}_deconv'.format(name))
 
 
 def downsample_block(output_channels=16, name=None):
@@ -34,11 +48,12 @@ def build_pyramid_feature_extractor(image_shape, num_levels):
     ft_pyramid = [None]*num_levels
     # 0th level features is the image itself. anyway we are going to use from level 2
     ft_pyramid[0] = img
-    cur_level_op_channels = 8
+    lvl_op_channels = [None, 8, 16, 32, 64, 96, 128, 196]
+    assert(len(lvl_op_channels) == num_levels)
+
     for lvl in range(1, num_levels):
         ft_pyramid[lvl] = downsample_block(
-            cur_level_op_channels, name='level_{}'.format(lvl))(ft_pyramid[lvl-1])
-        cur_level_op_channels *= 2
+            lvl_op_channels[lvl], name='level_{}'.format(lvl))(ft_pyramid[lvl-1])
     return tf.keras.Model(inputs=img, outputs=ft_pyramid, name='image_feature_extractor')
 
 
@@ -176,7 +191,7 @@ def extract_multiscale_disps(img_features, num_levels, predict_level):
             # left features are concatenated to create U-Net like architecture
             # disparity is added from low resolution to upscale resolution, hence final disparity will be far greater than max_disp at each level
             corr_vol_enriched = tf.keras.layers.Concatenate(axis=3)(
-                [disp_up, corr_vol, im_l_fts, res_feat_up])
+                [corr_vol, im_l_fts, disp_up, res_feat_up])
 
         disps[level], res_feat = predict_disp(corr_vol_enriched)
     return disps
@@ -220,6 +235,27 @@ def disparity_accuracy(disparity_true, disparity_pred):
     accuracy = 100.*accurate_predictions/ tf.cast(tf.size(disparity_true), tf.dtypes.float32)
     return accuracy
 
+class DebuggableModel(K.Model):
+    # https://keras.io/examples/keras_recipes/debugging_tips/#tip-3-to-debug-what-happens-during-fit-use-runeagerlytrue
+    def train_step(self, data):
+        data = data_adapter.expand_1d(data)
+        x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
+
+        with backprop.GradientTape() as tape:
+            y_pred = self(x, training=True)
+            loss = self.compiled_loss(
+                y, y_pred, sample_weight, regularization_losses=self.losses)
+        # For custom training steps, users can just write:
+        trainable_variables = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_variables)
+        for var, grad in zip(trainable_variables, gradients):
+            grad=grad.numpy()
+            print(var.name, np.mean(np.abs(grad)))
+        self.optimizer.apply_gradients(zip(gradients, trainable_variables))
+
+        self.compiled_metrics.update_state(y, y_pred, sample_weight)
+        return {m.name: m.result() for m in self.metrics}
+
 
 def build_model(img_shape, num_pyramid_levels, predict_level):
     views = [{'id': 0, 'name': 'left_view'}, {'id': 1, 'name': 'right_view'}]
@@ -262,12 +298,13 @@ def build_model(img_shape, num_pyramid_levels, predict_level):
     out_flows = dict(('l{}'.format(lvl),tf.identity(flow_pyramid[lvl], 'l{}'.format(lvl))) for lvl in range(num_pyramid_levels))
 
     # build loss from these flows
-    model = tf.keras.Model(inputs={
+    model = K.Model(inputs={
                            'left_view': imgs[0], 'right_view': imgs[1]}, outputs=out_flows, name='PWC_net')
     
     losses = dict(('l{}'.format(lvl),epe_loss) for lvl in range(num_pyramid_levels))
     # no loss on layers before predict level
     pyr_loss_weights = [0., 0., 0.32, 0.08, 0.02, 0.01, 0.005, 0.0025]
+    pyr_loss_weights = [20*x for x in pyr_loss_weights] # original code scales flow by 20. instead we scale weights by 20
     pyr_loss_weights = dict(('l{}'.format(lvl),pyr_loss_weights[lvl]) for lvl in range(num_pyramid_levels))
 
     assert(len(pyr_loss_weights) == num_pyramid_levels)

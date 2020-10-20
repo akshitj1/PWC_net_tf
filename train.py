@@ -8,9 +8,9 @@ from model import nearest_multiple, pyramid_compatible_shape
 print(tf.__version__)
 
 def train(colab_env):
-    EPOCHS = 50
+    EPOCHS = 20
     BATCH_SIZE = 8
-    DATASET_SIZE = 194
+    DATASET_SIZE = 1064
     STEPS_PER_EPOCH = DATASET_SIZE/BATCH_SIZE
     NUM_PYRAMID_LEVELS = 8
     PREDICT_LEVEL = 2
@@ -20,6 +20,7 @@ def train(colab_env):
     sintel_tfrecord_path = get_sintel_path(colab_env)
     train_dataset = get_sintel_disparity_dataset(sintel_tfrecord_path, BATCH_SIZE, MODEL_IN_SHAPE, NUM_PYRAMID_LEVELS)
     model = build_model(MODEL_IN_SHAPE, NUM_PYRAMID_LEVELS, PREDICT_LEVEL)
+    
 
     # metrics logging
     log_dir = "logs/fit/" + dt.now().strftime("%m%d-%H%M")

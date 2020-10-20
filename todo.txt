@@ -1,9 +1,6 @@
 ------- TODO
-keep corr_vol in same order in both if else conditions
-loss function to pyramidal loss
-disparity maxes till 24?
+plot disparity hist at all levels
 lazy execution for speedup
-downsample gt to 1/4 res and upsample to get upperbound on loss
 -------- DONE
 optimizers rms prop, adam
 check how flow is compounded
@@ -20,3 +17,6 @@ single train example:
 - 1e-4 lr converges much faster to 1.2 AEPE, 80% than 1e-3 which is much much slower (1.8k vs 5k)
 - single very long epoch reduces loss monotonically with lot fewer oscillations than 1 epoch per step but is much slower to converge
 he normal initializer makes training unstable? replace with default
+loss function to pyramidal loss
+keep corr_vol in same order in both if else conditions
+add regularization loss
