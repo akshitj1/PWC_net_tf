@@ -11,8 +11,8 @@ from summary import plot_disparities, plot_to_image, plot_disparity_histograms
 print(tf.__version__)
 
 def train(colab_env):
-    EPOCHS = 20
-    BATCH_SIZE = 8
+    EPOCHS = 225
+    BATCH_SIZE = 16
     DATASET_SIZE = 1064
     STEPS_PER_EPOCH = DATASET_SIZE/BATCH_SIZE
     NUM_PYRAMID_LEVELS = 8
@@ -50,7 +50,7 @@ def train(colab_env):
         
         with file_writer.as_default():
             tf.summary.image("Disparity pyramid", im_disp, step=epoch)
-            tf.summary.image("Disparity Distribution", im_hist, step=epoch)        
+            tf.summary.image("Disparity Distribution", im_hist, step=epoch)
 
 
     # Define the per-epoch callback.
@@ -67,14 +67,30 @@ def train(colab_env):
         monitor='tf_op_layer_l0_disparity_accuracy',
         mode='max')
     
+
+    # train at 1e-4 lr for 2/3rd of epochs
+    first_phase_epochs = (2*EPOCHS)//3
     model.fit(train_dataset,
         callbacks=[
               tensorboard_callback, 
               model_checkpoint_callback, 
-              disparity_plot_callback], 
-        epochs=EPOCHS, 
+              disparity_plot_callback],
+        epochs=first_phase_epochs, 
         steps_per_epoch=STEPS_PER_EPOCH)
-    # model.save_weights(ckpt_path)
+    print('first phase of learning complete. changing learning rate.')
+
+    #https://stackoverflow.com/questions/59737875/keras-change-learning-rate
+    K.backend.set_value(model.optimizer.learning_rate, 5e-5)
+    remaining_epochs = EPOCHS-first_phase_epochs
+    model.fit(train_dataset,
+        callbacks=[
+              tensorboard_callback, 
+              model_checkpoint_callback, 
+              disparity_plot_callback],
+        initial_epoch=first_phase_epochs,
+        epochs=remaining_epochs,
+        steps_per_epoch=STEPS_PER_EPOCH)
+    print('training complete!!!')
 
 
 if __name__ == "__main__":
