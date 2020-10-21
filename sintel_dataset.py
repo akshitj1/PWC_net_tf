@@ -2,6 +2,7 @@ import tensorflow as tf
 from pathlib import Path
 import numpy as np
 import platform
+import random
 
 # tfrecord ref:
 # https://www.tensorflow.org/tutorials/load_data/tfrecord
@@ -20,6 +21,7 @@ def get_frame_ids(view_dir):
         frame_names = [p.stem for p in frame_paths]
         frames.extend(['{}/{}'.format(scene_name, fname) for fname in frame_names])
     print('total {} egs. found'.format(len(frames)))
+    random.Random(10).shuffle(frames)
     return frames
 
 def scene_frame_to_path(sintel_base_dir,view_sub_dir, fr_name):
@@ -138,10 +140,11 @@ def get_sintel_disparity_dataset(stereo_records_file, batch_size, model_in_shape
     np_fts_dataset = parsed_stereo_dataset.map(byte_features_to_tensors, num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()    
     uniformly_shaped_dataset = np_fts_dataset.map(lambda entry: adapt_to_model_input(entry, model_in_shape, model_pyr_levels), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-    dataset = uniformly_shaped_dataset.shuffle(1064).repeat().batch(
+    train_ds = uniformly_shaped_dataset.repeat().batch(
         batch_size).prefetch(tf.data.experimental.AUTOTUNE)
+    test_ds = uniformly_shaped_dataset.take(1).repeat().batch(1).prefetch(tf.data.experimental.AUTOTUNE)
 
-    return dataset
+    return train_ds, test_ds
 
 def get_sintel_path(colab_env):
     local_records = 'data/sintel_stereo_disparity.tfrecords'
@@ -149,13 +152,8 @@ def get_sintel_path(colab_env):
     records_path = gdrive_records if colab_env else local_records
     return records_path
 
-
-if __name__ == "__main__":
-    colab_env = (platform.system() == 'Linux')
-
+def get_sintel_raw_path(colab_env):
     gdrive_sintel_dir = '/content/drive/My Drive/sintel_dataset'
     local_sintel_dir = '/Users/akshitjain/ext/workspace/datasets/sintel'
     sintel_data_dir = gdrive_sintel_dir if colab_env else local_sintel_dir
-
-    out_tfrecord_path = get_sintel_path(colab_env)
-    generate_sintel_disparity_tfrecord_dataset(sintel_data_dir, out_tfrecord_path)
+    return sintel_data_dir

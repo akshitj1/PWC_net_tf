@@ -205,7 +205,13 @@ def spatial_refine_flow(flow):
     for channel, dil_rate in zip(channels, dil_rates):
         disparity_delta = conv(channel, 3, dilation_rate=dil_rate)(disparity_delta)
     # we are computing deltas so we want negative values too
-    disparity_delta = tf.keras.layers.Conv2D(1, 3, padding='same', name='disparity_delta')(disparity_delta)
+    disparity_delta = tf.keras.layers.Conv2D(
+        1, 
+        3, 
+        padding='same', 
+        kernel_regularizer=K.regularizers.l2(4e-4),
+        bias_regularizer=K.regularizers.l2(4e-4),
+        name='disparity_delta')(disparity_delta)
     return disparity_delta
 
 
@@ -237,6 +243,7 @@ def disparity_accuracy(disparity_true, disparity_pred):
 
 class DebuggableModel(K.Model):
     # https://keras.io/examples/keras_recipes/debugging_tips/#tip-3-to-debug-what-happens-during-fit-use-runeagerlytrue
+    # https://keras.io/getting_started/intro_to_keras_for_researchers/
     def train_step(self, data):
         data = data_adapter.expand_1d(data)
         x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
@@ -300,11 +307,10 @@ def build_model(img_shape, num_pyramid_levels, predict_level):
     # build loss from these flows
     model = K.Model(inputs={
                            'left_view': imgs[0], 'right_view': imgs[1]}, outputs=out_flows, name='PWC_net')
-    
     losses = dict(('l{}'.format(lvl),epe_loss) for lvl in range(num_pyramid_levels))
     # no loss on layers before predict level
+    # originally flow is scaled by 20. But, in our exp. this leads to very less weight to reg. losses
     pyr_loss_weights = [0., 0., 0.32, 0.08, 0.02, 0.01, 0.005, 0.0025]
-    pyr_loss_weights = [20*x for x in pyr_loss_weights] # original code scales flow by 20. instead we scale weights by 20
     pyr_loss_weights = dict(('l{}'.format(lvl),pyr_loss_weights[lvl]) for lvl in range(num_pyramid_levels))
 
     assert(len(pyr_loss_weights) == num_pyramid_levels)
