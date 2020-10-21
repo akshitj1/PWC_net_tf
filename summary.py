@@ -21,7 +21,7 @@ def plot_to_image(figure):
   return image
 
 def plot_disparities(feats, disps_true, disps_pred, num_pyr_levels):
-    fig, ax = plt.subplots(nrows=(num_pyr_levels+2)//2, ncols=4, figsize=(20.0, 10.0))
+    fig, ax = plt.subplots(nrows=num_pyr_levels+1, ncols=2, figsize=(10.0, 20.0))
     l_img = feats['left_view'].squeeze()
     r_img = feats['right_view'].squeeze()
     grid = lambda idx: ax[np.unravel_index(idx, ax.shape)]
@@ -41,8 +41,23 @@ def plot_disparities(feats, disps_true, disps_pred, num_pyr_levels):
         grid(ax_idx).imshow(disp_pred)
         grid(ax_idx).set_title('level {}: disparity pred'.format(lvl))
         ax_idx+=1
-    grid(ax_idx).set_visible(False)
-    grid(ax_idx+1).set_visible(False)
+
+    fig.tight_layout()
+    return fig
+
+def plot_disparity_histograms(disps_true, disps_pred, num_pyr_levels):
+    fig, ax = plt.subplots(nrows=(num_pyr_levels+1+2)//2, ncols=2, figsize=(10.0, 10.0))
+    grid = lambda idx: ax[np.unravel_index(idx, ax.shape)]
+    grid(0).hist(disps_true['l0'].flatten())
+    grid(0).set_title('gt disparity')
+
+    ax_idx=1
+    for lvl in range(num_pyr_levels):
+        l_key='l{}'.format(lvl)
+        disp_pred = disps_pred[l_key].squeeze()
+        grid(ax_idx).hist(disp_pred.flatten())
+        grid(ax_idx).set_title('disparity - level {}'.format(lvl))
+        ax_idx+=1
 
     fig.tight_layout()
     return fig

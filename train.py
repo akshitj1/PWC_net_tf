@@ -6,7 +6,7 @@ import tensorflow as tf
 from tensorflow import keras as K
 import platform
 from model import nearest_multiple, pyramid_compatible_shape
-from summary import plot_disparities, plot_to_image
+from summary import plot_disparities, plot_to_image, plot_disparity_histograms
 
 print(tf.__version__)
 
@@ -44,14 +44,18 @@ def train(colab_env):
         disps_pred = model.predict(test_batch)
 
         fig = plot_disparities(feats, disps_true, disps_pred, NUM_PYRAMID_LEVELS)
-        im = plot_to_image(fig)
-
+        im_disp = plot_to_image(fig)
+        fig = plot_disparity_histograms(disps_true, disps_pred, NUM_PYRAMID_LEVELS)
+        im_hist = plot_to_image(fig)
+        
         with file_writer.as_default():
-            tf.summary.image("Disparity pyramid", im, step=epoch)
+            tf.summary.image("Disparity pyramid", im_disp, step=epoch)
+            tf.summary.image("Disparity Distribution", im_hist, step=epoch)        
 
 
     # Define the per-epoch callback.
     disparity_plot_callback = K.callbacks.LambdaCallback(on_epoch_end=log_disparity_pyramid)
+
 
     # checkpointing
     ckpt_path = '/content/drive/My Drive/sintel_dataset/pwc_net_ckpts/ckpt' if colab_env else 'pwc_net_ckpts/ckpt'
