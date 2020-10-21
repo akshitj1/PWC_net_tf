@@ -233,13 +233,11 @@ def epe_loss(disparity_true, disparity_pred):
     aepe = tf.math.reduce_mean(abs_error)
     return aepe
 
-def disparity_accuracy(disparity_true, disparity_pred):
-    disp_errors = tf.abs(disparity_pred-disparity_true)
-    disp_errors_rel = disp_errors/disparity_true
-    accurate_predictions = tf.reduce_sum(
-        tf.cast(disp_errors_rel < 0.05, tf.float32))
-    accuracy = 100.*accurate_predictions/ tf.cast(tf.size(disparity_true), tf.dtypes.float32)
-    return accuracy
+def avg_epe_accuracy(disparity_true, disparity_pred):
+    abs_error = tf.math.abs(
+        tf.math.subtract(disparity_pred, disparity_true))
+    aepe = tf.math.reduce_mean(abs_error)
+    return aepe
 
 class DebuggableModel(K.Model):
     # https://keras.io/examples/keras_recipes/debugging_tips/#tip-3-to-debug-what-happens-during-fit-use-runeagerlytrue
@@ -317,6 +315,6 @@ def build_model(img_shape, num_pyramid_levels, predict_level):
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4, epsilon=1e-8)
     model.compile(optimizer=optimizer, loss=losses, loss_weights=pyr_loss_weights,
-                  metrics={'l0': disparity_accuracy})
+                  metrics={'l0': avg_epe_accuracy})
 
     return model

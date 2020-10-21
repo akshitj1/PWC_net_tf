@@ -64,8 +64,8 @@ def train(colab_env):
         filepath=ckpt_path,
         save_weights_only=True,
         save_best_only=True,
-        monitor='tf_op_layer_l0_disparity_accuracy',
-        mode='max')
+        monitor='tf_op_layer_l0_avg_epe_accuracy',
+        mode='min')
     
 
     # train at 1e-4 lr for 2/3rd of epochs
