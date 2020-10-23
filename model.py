@@ -262,7 +262,7 @@ class DebuggableModel(K.Model):
         return {m.name: m.result() for m in self.metrics}
 
 
-def build_model(img_shape, num_pyramid_levels, predict_level):
+def build_model(img_shape, num_pyramid_levels, predict_level, predict=False):
     views = [{'id': 0, 'name': 'left_view'}, {'id': 1, 'name': 'right_view'}]
     LEFT, RIGHT = (0, 1)
     num_pyramid_levels = 8
@@ -290,31 +290,37 @@ def build_model(img_shape, num_pyramid_levels, predict_level):
     for lvl in range(predict_level):
         h,w  = img_shape
         flow_pyramid[lvl] = tf.image.resize(flow_pyramid[predict_level], (h//2**lvl, w//2**lvl))
+    
+    if predict:
+        # build loss from these flows
+        model = K.Model(inputs={
+                            'left_view': imgs[0], 'right_view': imgs[1]}, outputs=flow_pyramid[0], name='PWC_net')
+        model.compile(loss=epe_loss)
+    else:
+        # noisy_flow = flow_pyramid[predict_level]
+        # smooth_flow = noisy_flow + spatial_refine_flow(noisy_flow)
 
-    # noisy_flow = flow_pyramid[predict_level]
-    # smooth_flow = noisy_flow + spatial_refine_flow(noisy_flow)
+        # original resolution bilinear upsample
+        # h, w = img_shape
+        # l0_flow = tf.image.resize(smooth_flow, (h, w))
 
-    # original resolution bilinear upsample
-    # h, w = img_shape
-    # l0_flow = tf.image.resize(smooth_flow, (h, w))
+        # output_flow = crop(l0_flow, img_shape)
+        # identity to rename, as this name gets used in loss fn.
+        out_flows = dict(('l{}'.format(lvl),tf.identity(flow_pyramid[lvl], 'l{}'.format(lvl))) for lvl in range(num_pyramid_levels))
 
-    # output_flow = crop(l0_flow, img_shape)
-    # identity to rename, as this name gets used in loss fn.
-    out_flows = dict(('l{}'.format(lvl),tf.identity(flow_pyramid[lvl], 'l{}'.format(lvl))) for lvl in range(num_pyramid_levels))
+        # build loss from these flows
+        model = K.Model(inputs={
+                            'left_view': imgs[0], 'right_view': imgs[1]}, outputs=out_flows, name='PWC_net')
+        losses = dict(('l{}'.format(lvl),epe_loss) for lvl in range(num_pyramid_levels))
+        # no loss on layers before predict level
+        # originally flow is scaled by 20. But, in our exp. this leads to very less weight to reg. losses
+        pyr_loss_weights = [0., 0., 0.32, 0.08, 0.02, 0.01, 0.005, 0.0025]
+        pyr_loss_weights = dict(('l{}'.format(lvl),pyr_loss_weights[lvl]) for lvl in range(num_pyramid_levels))
 
-    # build loss from these flows
-    model = K.Model(inputs={
-                           'left_view': imgs[0], 'right_view': imgs[1]}, outputs=out_flows, name='PWC_net')
-    losses = dict(('l{}'.format(lvl),epe_loss) for lvl in range(num_pyramid_levels))
-    # no loss on layers before predict level
-    # originally flow is scaled by 20. But, in our exp. this leads to very less weight to reg. losses
-    pyr_loss_weights = [0., 0., 0.32, 0.08, 0.02, 0.01, 0.005, 0.0025]
-    pyr_loss_weights = dict(('l{}'.format(lvl),pyr_loss_weights[lvl]) for lvl in range(num_pyramid_levels))
+        assert(len(pyr_loss_weights) == num_pyramid_levels)
 
-    assert(len(pyr_loss_weights) == num_pyramid_levels)
-
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4, epsilon=1e-8)
-    model.compile(optimizer=optimizer, loss=losses, loss_weights=pyr_loss_weights,
-                  metrics={'l0': avg_epe_accuracy})
+        optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4, epsilon=1e-8)
+        model.compile(optimizer=optimizer, loss=losses, loss_weights=pyr_loss_weights,
+                    metrics={'l0': avg_epe_accuracy})
 
     return model

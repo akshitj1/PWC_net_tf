@@ -1,11 +1,10 @@
 from datetime import datetime as dt
 from sintel_dataset import get_sintel_disparity_dataset, get_sintel_path, get_sintel_raw_path,generate_sintel_disparity_tfrecord_dataset
-from model import build_model
+from model import build_model, pyramid_compatible_shape
 from pathlib import Path
 import tensorflow as tf
 from tensorflow import keras as K
 import platform
-from model import nearest_multiple, pyramid_compatible_shape
 from summary import plot_disparities, plot_to_image, plot_disparity_histograms
 
 print(tf.__version__)
