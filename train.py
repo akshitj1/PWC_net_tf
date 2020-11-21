@@ -11,8 +11,8 @@ print(tf.__version__)
 
 def train(colab_env):
     EPOCHS = 225
-    BATCH_SIZE = 16
-    DATASET_SIZE = 1064
+    BATCH_SIZE = 8#16
+    DATASET_SIZE = BATCH_SIZE#1064
     STEPS_PER_EPOCH = DATASET_SIZE/BATCH_SIZE
     NUM_PYRAMID_LEVELS = 8
     PREDICT_LEVEL = 2

@@ -40,11 +40,11 @@ def downsample_block(output_channels=16, name=None):
     return tf.keras.Sequential([conv_a, conv_aa, conv_b], name)
 
 
-def build_pyramid_feature_extractor(image_shape, num_levels):
+def build_pyramid_feature_extractor(image_shape, num_levels, predict=False):
     h, w = image_shape
     # level 0 -> original resolution, level n -> l/2**n dims for l in {w,h}
     # there are 6 levels from 2 to 7. we will not store 0,1 as they are not used
-    img = tf.keras.Input(shape=(h, w, 3), name='image_input')
+    img = tf.keras.Input(shape=(h, w, 3), batch_size=(1 if predict else None), name='image_input')
     ft_pyramid = [None]*num_levels
     # 0th level features is the image itself. anyway we are going to use from level 2
     ft_pyramid[0] = img
@@ -57,9 +57,10 @@ def build_pyramid_feature_extractor(image_shape, num_levels):
     return tf.keras.Model(inputs=img, outputs=ft_pyramid, name='image_feature_extractor')
 
 
-def get_image_input(image_shape, name):
+def get_image_input(image_shape, name, predict=False):
     h, w=image_shape
-    return tf.keras.Input(shape=(h, w, 3), dtype=tf.dtypes.uint8, name=name)
+    batch_size = 1 if predict else None
+    return tf.keras.Input(shape=(h, w, 3), batch_size=batch_size, dtype=tf.dtypes.uint8, name=name)
 
 
 def nearest_multiple(dividend, divisor):
@@ -88,8 +89,8 @@ def crop(im, out_shape):
     return tf.image.resize_with_crop_or_pad(im, h, w)
 
 
-def build_preprocess_image(img_shape, num_levels):
-    im = get_image_input(img_shape, 'preprocess_input')
+def build_preprocess_image(img_shape, num_levels, predict=False):
+    im = get_image_input(img_shape, predict=predict, name='preprocess_input')
     im_normed = tf.cast(im, dtype=tf.float32)/255.
     return tf.keras.Model(inputs=im, outputs=im_normed, name='preprocessing_layer')
 
@@ -269,15 +270,15 @@ def build_model(img_shape, num_pyramid_levels, predict_level, predict=False):
     # 0-indexed, level at which prediction will happen
     predict_level = 2
     preprocess_image = build_preprocess_image(
-        img_shape, num_pyramid_levels)
+        img_shape, num_pyramid_levels, predict=predict)
     extract_ft_pyramid = build_pyramid_feature_extractor(
-        img_shape, num_pyramid_levels)
+        img_shape, num_pyramid_levels, predict=predict)
 
     imgs = []
     ims_ft_pyramid = []
 
     for view in views:
-        im = get_image_input(img_shape, name='{}_image'.format(view['name']))
+        im = get_image_input(img_shape, predict=predict, name='{}_image'.format(view['name']))
         imgs.append(im)
         im_normed = preprocess_image(im)
         im_ft_pyramid = extract_ft_pyramid(im_normed)
@@ -296,6 +297,7 @@ def build_model(img_shape, num_pyramid_levels, predict_level, predict=False):
         model = K.Model(inputs={
                             'left_view': imgs[0], 'right_view': imgs[1]}, outputs=flow_pyramid[0], name='PWC_net')
         model.compile(loss=epe_loss)
+        print(model.summary())
     else:
         # noisy_flow = flow_pyramid[predict_level]
         # smooth_flow = noisy_flow + spatial_refine_flow(noisy_flow)
